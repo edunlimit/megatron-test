@@ -18,7 +18,7 @@ fi
 if [ $ENV = dsw ]; then
     export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
     MASTER_ADDR="172.31.40.63"
-    MASTER_PORT=$(shuf -n 1 -i 10000-65535)
+    MASTER_PORT=29500
     NNODES=2
     NODE_RANK=0
     GPUS_PER_NODE=8
