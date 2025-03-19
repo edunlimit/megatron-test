@@ -1,10 +1,43 @@
 #!/bin/bash
+#SBATCH --ntasks=2                  # Number of tasks (one per node)
+#SBATCH --nodes=2                   # Use 2 nodes
+#SBATCH --partition=train           # Partition to submit the job to
+#SBATCH --cpus-per-task=8           # Number of CPU cores per task
+#SBATCH --gres=gpu:8                # 8 GPUs per node
+#SBATCH --job-name=distributed_train  # Job name
+#SBATCH --output=train_%j_node${SLURM_LOCALID}.log
+
+
+
 set -e
 ENV=$1
 CURRENT_DIR="$( cd "$( dirname "$0" )" && pwd )"
 MEGATRON_PATH=$( dirname $( dirname ${CURRENT_DIR}))
 export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATH}/PAI-Megatron-LM-240718:$PYTHONPATH
 export CUDA_DEVICE_MAX_CONNECTIONS=1
+
+##### Number of total processes 
+echo "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX "
+echo "Nodelist:= " $SLURM_JOB_NODELIST
+echo "Number of nodes:= " $SLURM_JOB_NUM_NODES
+echo "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX "
+
+# If you want to load things from your .bashrc profile, e.g. cuda drivers, singularity etc 
+source ~/.bashrc
+
+
+# ******************* These are read internally it seems ***********************************
+# ******** Master port, address and world size MUST be passed as variables for DDP to work 
+export MASTER_PORT=29500
+export WORLD_SIZE=16
+echo "MASTER_PORT"=$MASTER_PORT
+echo "WORLD_SIZE="$WORLD_SIZE
+
+master_addr=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
+export MASTER_ADDR=$master_addr
+echo "MASTER_ADDR="$MASTER_ADDR
+echo "NODE_RANK="$SLURM_LOCALID
+# ******************************************************************************************
 
 # Here are some configs controled by env
 if [ -z ${MP_DATASET_TYPE} ];then
@@ -17,10 +50,10 @@ fi
 
 if [ $ENV = dsw ]; then
     export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
-    MASTER_ADDR="172.31.40.63"
-    MASTER_PORT=29500
-    NNODES=2
-    NODE_RANK=${26}
+    MASTER_ADDR=$MASTER_ADDR
+    MASTER_PORT=$MASTER_PORT
+    NNODES=$SLURM_JOB_NUM_NODES
+    NODE_RANK=$SLURM_LOCALID
     GPUS_PER_NODE=8
 elif [ $ENV = dlc ]; then
     NNODES=${WORLD_SIZE}
@@ -38,7 +71,6 @@ fi
 if [ -z ${MP_SFT_PACKING} ]; then
     MP_SFT_PACKING=false
 fi
-
 
 DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port $MASTER_PORT"
 
@@ -418,7 +450,7 @@ megatron_options="  \
         --no-save-optim \
         "
 
-run_cmd="torchrun $DISTRIBUTED_ARGS ../qwen2/pretrain_qwen.py
+run_cmd="torchrun $DISTRIBUTED_ARGS /fsx/dataset/megatron-test/examples/qwen2/pretrain_qwen.py
  ${megatron_options} ${dataset_option} ${pr_options} ${load_options} ${te_options} ${activation_checkpoint_options} \
  ${do_options} ${sp_options} ${gqa_options} ${offload_option} ${comm_overlap_option} ${sft_option}  ${tie_option} ${vp_options} ${packing_options}"
 

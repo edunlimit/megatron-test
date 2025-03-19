@@ -21,61 +21,61 @@ import datetime
 import torch
 import torch._dynamo
 
-########################################
-# SageMaker Revised
-os.environ["NCCL_SOCKET_IFNAME"] = "eth0"
-os.environ['LOCAL_RANK'] = os.environ['OMPI_COMM_WORLD_LOCAL_RANK']
-local_rank = int(os.environ['LOCAL_RANK'])
-os.environ['RANK'] = os.environ['OMPI_COMM_WORLD_RANK']
-world_rank = int(os.environ['RANK'])
-os.environ['WORLD_SIZE'] = os.environ['OMPI_COMM_WORLD_SIZE']
-world_size = int(os.environ['WORLD_SIZE'])
+# ########################################
+# # SageMaker Revised
+# os.environ["NCCL_SOCKET_IFNAME"] = "eth0"
+# os.environ['LOCAL_RANK'] = os.environ['OMPI_COMM_WORLD_LOCAL_RANK']
+# local_rank = int(os.environ['LOCAL_RANK'])
+# os.environ['RANK'] = os.environ['OMPI_COMM_WORLD_RANK']
+# world_rank = int(os.environ['RANK'])
+# os.environ['WORLD_SIZE'] = os.environ['OMPI_COMM_WORLD_SIZE']
+# world_size = int(os.environ['WORLD_SIZE'])
 
-# For g5.48xlarge, there are 8 GPUs per node
-gpus_per_node = 8
-os.environ['NODE_RANK'] = str(world_rank // gpus_per_node)
-node_rank = int(os.environ['NODE_RANK'])
+# # For g5.48xlarge, there are 8 GPUs per node
+# gpus_per_node = 8
+# os.environ['NODE_RANK'] = str(world_rank // gpus_per_node)
+# node_rank = int(os.environ['NODE_RANK'])
 
-# Disable P2P for g5.48xlarge since it doesn't support it
-os.environ["NCCL_IGNORE_DISABLED_P2P"] = "1"
-os.environ["NCCL_P2P_DISABLE"] = "1"
-os.environ["NCCL_IB_DISABLE"] = "1"
-os.environ["NCCL_DEBUG_SUBSYS"]="ALL"
+# # Disable P2P for g5.48xlarge since it doesn't support it
+# os.environ["NCCL_IGNORE_DISABLED_P2P"] = "1"
+# os.environ["NCCL_P2P_DISABLE"] = "1"
+# os.environ["NCCL_IB_DISABLE"] = "1"
+# os.environ["NCCL_DEBUG_SUBSYS"]="ALL"
 
-os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(str(i) for i in range(gpus_per_node))
+# os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(str(i) for i in range(gpus_per_node))
 
-# Setting up AWS credentials directory
-os.makedirs('/root/.aws/', exist_ok=True)
+# # Setting up AWS credentials directory
+# os.makedirs('/root/.aws/', exist_ok=True)
 
-set_path = '/opt/ml/code/config'
-file = Path(set_path)
-if file.exists() and os.environ['LOCAL_RANK'] == '0':
-    subprocess.run(['cp', '-r', set_path, '/root/.aws/'])
-########################################
+# set_path = '/opt/ml/code/config'
+# file = Path(set_path)
+# if file.exists() and os.environ['LOCAL_RANK'] == '0':
+#     subprocess.run(['cp', '-r', set_path, '/root/.aws/'])
+# ########################################
 
-# Initialize the process group
-torch.distributed.init_process_group(
-    backend="nccl",
-    init_method="env://",
-    timeout=datetime.timedelta(minutes=30)  # Increase timeout
-)
-device = torch.device(f"cuda:{local_rank}")
-store = torch.distributed.TCPStore("localhost", 29500, 2, True)
-print("TCP store initialized successfully")
+# # Initialize the process group
+# torch.distributed.init_process_group(
+#     backend="nccl",
+#     init_method="env://",
+#     timeout=datetime.timedelta(minutes=30)  # Increase timeout
+# )
+# device = torch.device(f"cuda:{local_rank}")
+# store = torch.distributed.TCPStore("localhost", 29500, 2, True)
+# print("TCP store initialized successfully")
 
-# Verify process group with simple all_reduce
-try:
-    tensor = torch.ones(1, device=device)
-    torch.distributed.all_reduce(tensor)
-    torch.cuda.synchronize()  # Ensure the operation is complete
-    print(f"All-reduce test on rank {world_rank}: {tensor.item()} (should be {world_size})")
-except Exception as e:
-    print(f"Error during all-reduce on rank {world_rank}: {e}")
+# # Verify process group with simple all_reduce
+# try:
+#     tensor = torch.ones(1, device=device)
+#     torch.distributed.all_reduce(tensor)
+#     torch.cuda.synchronize()  # Ensure the operation is complete
+#     print(f"All-reduce test on rank {world_rank}: {tensor.item()} (should be {world_size})")
+# except Exception as e:
+#     print(f"Error during all-reduce on rank {world_rank}: {e}")
 
-torch.distributed.barrier()
-print(f"Passed barrier on rank {world_rank}")
-########################################
-## SageMaker Revised
+# torch.distributed.barrier()
+# print(f"Passed barrier on rank {world_rank}")
+# ########################################
+# ## SageMaker Revised
 
 from typing import Union
 
