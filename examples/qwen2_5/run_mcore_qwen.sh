@@ -31,7 +31,7 @@ export WORLD_SIZE=16
 echo "MASTER_PORT"=$MASTER_PORT
 echo "WORLD_SIZE="$WORLD_SIZE
 
-export MASTER_ADDR="10.0.31.196"
+export MASTER_ADDR="172.31.36.86"
 echo "MASTER_ADDR="$MASTER_ADDR
 echo "NODE_RANK="$SLURM_LOCALID
 # ******************************************************************************************
