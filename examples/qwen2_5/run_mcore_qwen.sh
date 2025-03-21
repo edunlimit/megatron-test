@@ -23,6 +23,8 @@ echo "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX "
 # If you want to load things from your .bashrc profile, e.g. cuda drivers, singularity etc 
 source ~/.bashrc
 
+export TORCH_DISTRIBUTED_DEBUG=DETAIL
+
 
 # ******************* These are read internally it seems ***********************************
 # ******** Master port, address and world size MUST be passed as variables for DDP to work 
