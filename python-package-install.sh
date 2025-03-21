@@ -11,7 +11,7 @@ source /opt/parallelcluster/pyenv/versions/3.9.20/envs/awsbatch_virtualenv/bin/a
 
 sudo chown -R ec2-user:ec2-user /opt/parallelcluster/pyenv/versions/3.9.20/envs/awsbatch_virtualenv/
 
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
 
 pip install --no-cache-dir  \
 regex \
@@ -31,7 +31,8 @@ zarr \
 wandb \
 datasets \
 wheel \
-packaging
+packaging \
+transformer_engine[pytorch]
 
 
 sudo chown -R ec2-user:ec2-user /home/ec2-user/apex
