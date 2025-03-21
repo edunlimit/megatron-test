@@ -32,7 +32,9 @@ wandb \
 datasets \
 wheel \
 packaging \
-transformer_engine[pytorch]
+ninja \
+
+pip3 install --verbose --no-cache-dir transformer_engine[pytorch]
 
 
 sudo chown -R ec2-user:ec2-user /home/ec2-user/apex

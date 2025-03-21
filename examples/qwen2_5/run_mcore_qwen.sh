@@ -36,6 +36,9 @@ echo "WORLD_SIZE="$WORLD_SIZE
 export MASTER_ADDR="172.31.36.86"
 echo "MASTER_ADDR="$MASTER_ADDR
 echo "NODE_RANK="$SLURM_LOCALID
+
+export MASTER_PORT=29500
+export RANK=$SLURM_LOCALID
 # ******************************************************************************************
 
 # Here are some configs controled by env
