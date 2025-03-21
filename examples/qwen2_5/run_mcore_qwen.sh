@@ -5,8 +5,12 @@
 #SBATCH --cpus-per-task=8           # Number of CPU cores per task
 #SBATCH --gres=gpu:8                # 8 GPUs per node
 #SBATCH --job-name=distributed_train  # Job name
+<<<<<<< HEAD
 #SBATCH --output=train_%j_node${SLURM_LOCALID}.log
 
+=======
+#SBATCH --output=train_%j.log
+>>>>>>> 8e9d0a1 (updating)
 
 
 set -e
@@ -33,8 +37,13 @@ export WORLD_SIZE=16
 echo "MASTER_PORT"=$MASTER_PORT
 echo "WORLD_SIZE="$WORLD_SIZE
 
+<<<<<<< HEAD
 master_addr=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
 export MASTER_ADDR=$master_addr
+=======
+
+export MASTER_ADDR="10.0.31.196"
+>>>>>>> 8e9d0a1 (updating)
 echo "MASTER_ADDR="$MASTER_ADDR
 echo "NODE_RANK="$SLURM_LOCALID
 # ******************************************************************************************
@@ -450,7 +459,11 @@ megatron_options="  \
         --no-save-optim \
         "
 
+<<<<<<< HEAD
 run_cmd="torchrun $DISTRIBUTED_ARGS /fsx/dataset/megatron-test/examples/qwen2/pretrain_qwen.py
+=======
+run_cmd="python /fsx/dataset/megatron-test/pretrain_qwen.py
+>>>>>>> 8e9d0a1 (updating)
  ${megatron_options} ${dataset_option} ${pr_options} ${load_options} ${te_options} ${activation_checkpoint_options} \
  ${do_options} ${sp_options} ${gqa_options} ${offload_option} ${comm_overlap_option} ${sft_option}  ${tie_option} ${vp_options} ${packing_options}"
 

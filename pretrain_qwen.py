@@ -20,6 +20,8 @@ from pathlib import Path
 import datetime
 import torch
 import torch._dynamo
+import apex
+import transformer_engine
 
 # ########################################
 # # SageMaker Revised
