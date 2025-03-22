@@ -35,7 +35,7 @@ srun -N 2 -n 2 bash -c '
 	ninja \
 	setuptools
 
-	pip3 install --verbose --no-cache-dir transformer_engine[pytorch]
+	pip3 install --verbose --no-cache-dir transformer_engine[pytorch]==1.13.0
 '
 
 srun -N 2 -n 2 bash -c '
