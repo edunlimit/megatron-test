@@ -33,6 +33,7 @@ srun -N 2 -n 2 bash -c '
 	wheel \
 	packaging \
 	ninja \
+	setuptools
 
 	pip3 install --verbose --no-cache-dir transformer_engine[pytorch]
 '
