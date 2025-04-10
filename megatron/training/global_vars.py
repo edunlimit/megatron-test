@@ -34,12 +34,19 @@ def get_tokenizer():
 def get_tensorboard_writer():
     """Return tensorboard writer. It can be None so no need
     to check if it is initialized."""
+    if _GLOBAL_TENSORBOARD_WRITER is None:
+        print('setting tensorboard writer...')
+        _set_tensorboard_writer(get_args())
     return _GLOBAL_TENSORBOARD_WRITER
 
 
 def get_wandb_writer():
     """Return tensorboard writer. It can be None so no need
     to check if it is initialized."""
+    if _GLOBAL_WANDB_WRITER is None:
+        print('setting wandb writer...')
+        _set_wandb_writer(get_args())
+    print(f"DEBUG: get_wandb_writer returning: {'initialized' if _GLOBAL_WANDB_WRITER else 'None'}")
     return _GLOBAL_WANDB_WRITER
 
 
@@ -140,26 +147,33 @@ def _set_tensorboard_writer(args):
 
 def _set_wandb_writer(args):
     global _GLOBAL_WANDB_WRITER
+    print(f"DEBUG [Rank {args.rank}]: Setting up Wandb writer. wandb_project={getattr(args, 'wandb_project', '')}")
     _ensure_var_is_not_initialized(_GLOBAL_WANDB_WRITER,
                                    'wandb writer')
-    if getattr(args, 'wandb_project', '') and args.rank == (args.world_size - 1):
-        if args.wandb_exp_name == '':
-            raise ValueError("Please specify the wandb experiment name!")
+    try:
+        if getattr(args, 'wandb_project', '') and args.rank == (args.world_size - 1):
+            print(f"DEBUG [Rank {args.rank}]: About to initialize Wandb with project={args.wandb_project}, exp_name={args.wandb_exp_name}")
+            if args.wandb_exp_name == '':
+                raise ValueError("Please specify the wandb experiment name!")
 
-        import wandb
-        if args.wandb_save_dir:
-            save_dir = args.wandb_save_dir
-        else:
-            # Defaults to the save dir.
-            save_dir = os.path.join(args.save, 'wandb')
-        wandb_kwargs = {
-            'dir': save_dir,
-            'name': args.wandb_exp_name,
-            'project': args.wandb_project,
-            'config': vars(args)}
-        os.makedirs(wandb_kwargs['dir'], exist_ok=True)
-        wandb.init(**wandb_kwargs)
-        _GLOBAL_WANDB_WRITER = wandb
+            import wandb
+            if args.wandb_save_dir:
+                save_dir = args.wandb_save_dir
+            else:
+                # Defaults to the save dir.
+                save_dir = os.path.join(args.save, 'wandb')
+            wandb_kwargs = {
+                'dir': save_dir,
+                'name': args.wandb_exp_name,
+                'project': args.wandb_project,
+                'config': vars(args)}
+            os.makedirs(wandb_kwargs['dir'], exist_ok=True)
+            print(f"DEBUG [Rank {args.rank}]: Calling wandb.init with kwargs: {wandb_kwargs}")
+            wandb.init(**wandb_kwargs)
+            print(f"DEBUG [Rank {args.rank}]: Wandb initialized successfully")
+            _GLOBAL_WANDB_WRITER = wandb
+    except Exception as e:
+        print(f"DEBUG [Rank {args.rank}]: Error initializing Wandb: {e}")
 
 
 def _set_one_logger(args):

@@ -570,5 +570,75 @@ def get_patch_args(parser):
         "--num-mtp-predictor",
         type=int,
     )
+    
+    # Check if arguments already exist in the parser
+    def argument_exists(parser, arg_name):
+        for action in parser._actions:
+            if arg_name in action.option_strings:
+                return True
+        for group in parser._action_groups:
+            for action in group._group_actions:
+                if arg_name in action.option_strings:
+                    return True
+        return False
+    
+    # Only add arguments that don't already exist
+    if not argument_exists(parser, "--log-learning-rate-to-tensorboard"):
+        group.add_argument(
+            "--log-learning-rate-to-tensorboard",
+            action="store_true",
+            help="Enable learning rate logging to tensorboard."
+        )
+    
+    if not argument_exists(parser, "--log-loss-scale-to-tensorboard"):
+        group.add_argument(
+            "--log-loss-scale-to-tensorboard",
+            action="store_true",
+            help="Enable loss-scale logging to tensorboard."
+        )
+    
+    # Skip this one as it's causing conflicts
+    # if not argument_exists(parser, "--log-validation-ppl-to-tensorboard"):
+    #     group.add_argument(
+    #         "--log-validation-ppl-to-tensorboard",
+    #         action="store_true",
+    #         help="If set, write validation perplexity to tensorboard."
+    #     )
+    
+    if not argument_exists(parser, "--log-memory-to-tensorboard"):
+        group.add_argument(
+            "--log-memory-to-tensorboard",
+            action="store_true",
+            help="Enable memory logging to tensorboard."
+        )
+    
+    if not argument_exists(parser, "--log-world-size-to-tensorboard"):
+        group.add_argument(
+            "--log-world-size-to-tensorboard",
+            action="store_true",
+            help="Enable world size logging to tensorboard."
+        )
+    
+    if not argument_exists(parser, "--log-params-norm"):
+        group.add_argument(
+            "--log-params-norm",
+            action="store_true",
+            help="If set, calculate and log parameters norm."
+        )
+    
+    if not argument_exists(parser, "--log-num-zeros-in-grad"):
+        group.add_argument(
+            "--log-num-zeros-in-grad",
+            action="store_true",
+            help="If set, calculate and log the number of zeros in gradient."
+        )
+    
+    if not argument_exists(parser, "--tensorboard-log-interval"):
+        group.add_argument(
+            "--tensorboard-log-interval",
+            type=int,
+            default=1,
+            help="Report to tensorboard interval."
+        )
 
     return parser

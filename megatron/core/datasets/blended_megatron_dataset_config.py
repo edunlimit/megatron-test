@@ -61,11 +61,10 @@ class BlendedMegatronDatasetConfig:
     """
 
     tokenizer: Optional[MegatronTokenizer] = None
-    """The MegatronTokenizer instance or None. Required for datasets which do online tokenization."""
+    """The MegatronTokenizer instance. Required for datasets that do online tokenization."""
 
     def __post_init__(self) -> None:
-        """Do asserts and set fields post init
-        """
+        """Do asserts and set fields post init"""
         if self.blend_per_split is not None and any(self.blend_per_split):
             assert self.blend is None, "blend and blend_per_split are incompatible"
             assert self.split is None, "split and blend_per_split are incompatible"
@@ -144,7 +143,8 @@ def convert_split_vector_to_split_matrix(
     Args:
         vector_a (List[float]): The primary split vector
 
-        vector_b (Optional[List[float]]): An optional secondary split vector which constrains the primary split vector. Defaults to None.
+        vector_b (Optional[List[float]]): An optional secondary split vector which constrains the
+            primary split vector. Defaults to None.
 
     Returns:
         List[Tuple[float, float]]: The split matrix consisting of book-ends of each split in order

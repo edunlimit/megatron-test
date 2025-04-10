@@ -666,8 +666,6 @@ def train_step(
     timers = get_timers()
 
     # Set grad to zero.
-    print_datetime("Inside Train Step")
-    print_datetime("Setting Grad to Zero")
     for model_chunk in model:
         model_chunk.zero_grad_buffer()
 
@@ -684,30 +682,21 @@ def train_step(
         )
 
     optimizer.zero_grad()
-    try:
-        # Forward pass.
-        print_datetime("Forward Pass")
-        forward_backward_func = get_forward_backward_func()
-        print_datetime("got Forward backward function")
-        losses_reduced = forward_backward_func(
-            forward_step_func=forward_step_func,
-            data_iterator=data_iterator,
-            model=model,
-            num_microbatches=get_num_microbatches(),
-            seq_length=args.seq_length,
-            micro_batch_size=args.micro_batch_size,
-            decoder_seq_length=args.decoder_seq_length,
-            forward_only=False,
-        )
-        print_datetime("End of forward backward function and continuing training...")
-    except Exception as e:
-        print_datetime(f"Error during forward_backward_func execution: {str(e)}")
-        print_datetime(f"CUDA memory allocated: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
-        print_datetime(f"CUDA memory reserved: {torch.cuda.memory_reserved() / 1e9:.2f} GB")
-        raise
+
+    # Forward pass.
+    forward_backward_func = get_forward_backward_func()
+    losses_reduced = forward_backward_func(
+        forward_step_func=forward_step_func,
+        data_iterator=data_iterator,
+        model=model,
+        num_microbatches=get_num_microbatches(),
+        seq_length=args.seq_length,
+        micro_batch_size=args.micro_batch_size,
+        decoder_seq_length=args.decoder_seq_length,
+        forward_only=False,
+    )
 
     # Empty unused memory.
-    print_datetime("Empty Unused Memory")
     if args.empty_unused_memory_level >= 1:
         torch.cuda.empty_cache()
 
@@ -719,7 +708,6 @@ def train_step(
         memory_stats_collector.sample_overall_data()
 
     # Update parameters.
-    print_datetime("Update Parameters")
     timers('optimizer', log_level=1).start(barrier=args.barrier_with_L1_time)
     if hasattr(optimizer, 'chunk_manager') and memory_stats_collector is not None:
         update_successful, grad_norm, num_zeros_in_grad = optimizer.step(
@@ -735,10 +723,6 @@ def train_step(
         )
 
         memory_stats_collector.sample_overall_data()
-        may_evict_tensor = memory_stats_collector.on_iter_end()
-        if optimizer.policy == 'auto' and may_evict_tensor and hasattr(optimizer, 'update_layout'):
-            print('Warmuping...')
-            optimizer.update_layout(memory_stats_collector.warmup_memstats)
 
     # Vision momentum.
     if getattr(args, 'vision_pretraining', False) and args.vision_pretraining_type == "dino":
@@ -863,10 +847,23 @@ def training_log(
 
     total_iterations = total_loss_dict[advanced_iters_key] + total_loss_dict[skipped_iters_key]
 
+    """Debugging"""
+    print(f"DEBUG [Rank {args.rank}/{args.world_size}]: Wandb writer is {'initialized' if wandb_writer else 'not initialized'}")
+    print(f"DEBUG: Wandb writer is {'initialized' if wandb_writer else 'not initialized'}")
+    print(f"DEBUG: log_learning_rate_to_tensorboard={args.log_learning_rate_to_tensorboard}")
+    print(f"DEBUG: log_loss_scale_to_tensorboard={args.log_loss_scale_to_tensorboard}")
+    print(f"DEBUG: log_memory_to_tensorboard={args.log_memory_to_tensorboard}")
+    print(f"DEBUG: log_world_size_to_tensorboard={args.log_world_size_to_tensorboard}")
+    print(f"DEBUG: grad_norm is {'set' if grad_norm is not None else 'None'}")
+    print(f"DEBUG: num_zeros_in_grad is {'set' if num_zeros_in_grad is not None else 'None'}")
+    print(f"DEBUG: params_norm is {'set' if params_norm is not None else 'None'}")
+    print(f"DEBUG: loss_dict keys: {list(loss_dict.keys())}")
+
     # Tensorboard values.
     # Timer requires all the ranks to call.
     if args.log_timers_to_tensorboard and (iteration % args.tensorboard_log_interval == 0):
         timers.write(timers_to_log, writer, iteration, normalizer=total_iterations)
+
     if writer and (iteration % args.tensorboard_log_interval == 0):
         if wandb_writer:
             wandb_writer.log({'samples vs steps': args.consumed_train_samples}, iteration)
@@ -1179,7 +1176,6 @@ def train(
     if args.manual_gc:
         # Disable the default garbage collector and perform the collection manually.
         # This is to align the timing of garbage collection across ranks.
-        print_datetime('manual gc enabled')
         assert (
             args.manual_gc_interval >= 0
         ), 'Manual garbage collection interval should be laerger than or equal to 0.'
@@ -1188,13 +1184,11 @@ def train(
 
     memory_stats_collector = None
     if args.optimizer == 'hybridadam':
-        print_datetime('hybridadam optimizer preparing...')
         memory_stats_collector = MemStatsCollector()
         memory_stats_collector.start_collection()
 
     # Singleton Initialization
     if args.log_straggler:
-        print_datetime('Initializing log straggler...')
         global stimer
         world = torch.distributed.get_world_size()
         rank = torch.distributed.get_rank()
@@ -1208,9 +1202,7 @@ def train(
         )
     total_flops = 0.0
 
-    print_datetime('getting microbatches...')
     num_microbatches = get_num_microbatches()
-    print_datetime('Done getting microbatches')
     eval_duration = 0.0
     eval_iterations = 0
 
@@ -1234,7 +1226,6 @@ def train(
             one_logger.store_set('get_e2e_base_metrics', get_e2e_base_metrics)
 
     while iteration < args.train_iters:
-        print_datetime("Inside While Loop")
         if (
             args.profile
             and iteration == args.profile_step_start
@@ -1249,7 +1240,6 @@ def train(
         # checkpoint should be saved. If the number of microbatches is different
         # from the previous iteration, save a checkpoint. Then run consistency check
         # to make sure training configuration is still valid.
-        print_datetime("Updating number of microbatches")
         update_num_microbatches(args.consumed_train_samples, consistency_check=False)
         if get_num_microbatches() != num_microbatches and iteration != 0:
             assert (
@@ -1267,7 +1257,6 @@ def train(
         update_num_microbatches(args.consumed_train_samples, consistency_check=True)
 
         args.curr_iteration = iteration
-        print_datetime("Training Step...")
         loss_dict, skipped_iter, grad_norm, num_zeros_in_grad = train_step(
             forward_step_func,
             train_data_iterator,
@@ -1287,7 +1276,6 @@ def train(
         total_flops += num_fp_ops
 
         # Logging.
-        print_datetime("Logging...")
         loss_scale = optimizer.get_loss_scale().item()
         params_norm = None
         if args.log_params_norm:
@@ -1300,7 +1288,6 @@ def train(
                 decoupled_learning_rate = param_group['lr']
             else:
                 learning_rate = param_group['lr']
-        print_datetime("Running Training Log")
         report_memory_flag = training_log(
             loss_dict,
             total_loss_dict,

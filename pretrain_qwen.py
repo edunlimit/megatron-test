@@ -22,7 +22,19 @@ import torch
 import torch._dynamo
 import apex
 import transformer_engine
+import socket
+import torch.distributed as dist
 
+os.environ["UB_SKIPMC"] = "1"
+
+gpus_per_node = int(os.getenv("SLURM_GPUS_ON_NODE"))
+print("Number of GPUs= ", gpus_per_node)
+torch.cuda.set_device(int(os.getenv("SLURM_LOCALID")))
+dist.init_process_group(
+    backend='nccl',  # You can also use 'gloo' or 'mpi' depending on your setup
+    world_size=gpus_per_node*int(os.getenv('SLURM_JOB_NUM_NODES')),  # Update to match your number of workers
+    rank=int(os.environ['SLURM_PROCID']) 
+)
 # ########################################
 # # SageMaker Revised
 # os.environ["NCCL_SOCKET_IFNAME"] = "eth0"

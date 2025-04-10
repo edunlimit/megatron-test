@@ -12,36 +12,414 @@ set -e
 ENV=$1
 CURRENT_DIR="$( cd "$( dirname "$0" )" && pwd )"
 MEGATRON_PATH=$( dirname $( dirname ${CURRENT_DIR}))
-export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATH}/PAI-Megatron-LM-240718:$PYTHONPATH
+export PYTHONPATH=/fsx/fsx/megtron-test/PAI-Megatron-LM-240718:/opt/pytorch/lib/python3.12/site-packages/
+#export PYTHONPATH=/fsx/fsx/megtron-test/PAI-Megatron-LM-240718:/opt/parallelcluster/pyenv/versions/3.9.20/envs/awsbatch_virtualenv/lib/python3.9/site-packages
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 
-# Debug information
+##### Number of total processes 
 echo "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX "
-echo "MEGATRON_PATH= "MEGATRON_PATH
+echo "MEGATRON_PATH= "$PYTHONPATH
 echo "Nodelist:= " $SLURM_JOB_NODELIST
 echo "Number of nodes:= " $SLURM_JOB_NUM_NODES
 echo "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX "
 
-# Load environment
+# If you want to load things from your .bashrc profile, e.g. cuda drivers, singularity etc 
 source ~/.bashrc
 
 export TORCH_DISTRIBUTED_DEBUG=DETAIL
+export NCCL_DEBUG=WARN
 
-# Set DDP variables
-export MASTER_PORT=29500
-export WORLD_SIZE=$(( 8 * $SLURM_JOB_NUM_NODES ))
+# ******************* These are read internally it seems ***********************************
+# ******** Master port, address and world size MUST be passed as variables for DDP to work 
+# Function to check if a port is in use
+is_port_in_use() {
+  lsof -i :$1 > /dev/null
+  return $?
+}
+
+# Try to find an available port starting from 29500
+port=29500
+while is_port_in_use $port; do
+  port=$((port + 1))  # Increment the port number
+done
+
+# Set the found available port as MASTER_PORT environment variable
+export MASTER_PORT=$port
+export WORLD_SIZE=$(( $SLURM_GPUS_ON_NODE * $SLURM_JOB_NUM_NODES ))
+echo "MASTER_PORT"=$MASTER_PORT
+echo "WORLD_SIZE="$WORLD_SIZE
+
 export MASTER_ADDR=$(scontrol show hostname $SLURM_NODELIST | head -n 1)
 
-echo "MASTER_PORT=$MASTER_PORT"
-echo "WORLD_SIZE=$WORLD_SIZE"
-echo "MASTER_ADDR=$MASTER_ADDR"
+echo "MASTER_ADDR="$MASTER_ADDR
+echo "NODE_RANK="$SLURM_NODEID
 
-# Dataset config
-if [ -z ${MP_DATASET_TYPE} ]; then
+export RANK=$SLURM_PROCID
+# ******************************************************************************************
+
+# Here are some configs controled by env
+if [ -z ${MP_DATASET_TYPE} ];then
     MP_DATASET_TYPE="idxmap"
 fi
 
-# Megatron options (same as before)
+if [ -z ${MP_AC_LAYERS} ];then
+    MP_AC_LAYERS=1
+fi
+
+if [ $ENV = dsw ]; then
+    export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+    MASTER_ADDR=$MASTER_ADDR
+    MASTER_PORT=$MASTER_PORT
+    NNODES=$SLURM_JOB_NUM_NODES
+    NODE_RANK=$SLURM_NODEID
+    GPUS_PER_NODE=8
+elif [ $ENV = dlc ]; then
+    NNODES=${WORLD_SIZE}
+    NODE_RANK=${RANK}
+    GPUS_PER_NODE=${KUBERNETES_CONTAINER_RESOURCE_GPU}
+fi
+
+if [ -z ${MP_VP} ]; then
+    vp_options=""
+else
+    vp_options=" \
+        --num-layers-per-virtual-pipeline-stage ${MP_VP}"
+fi
+
+if [ -z ${MP_SFT_PACKING} ]; then
+    MP_SFT_PACKING=false
+fi
+
+DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port $MASTER_PORT"
+
+### BASE CONFIG ###
+MODEL_SIZE=$2
+BATCH_SIZE=$3
+GLOBAL_BATCH_SIZE=$4
+LR=$5
+MIN_LR=$6
+SEQ_LEN=$7
+PAD_LEN=$8
+PR=$9
+### BASE CONFIG ###
+
+### PARALLEL / BOOL OPTION ###
+TP=${10}
+PP=${11}
+CP=${12}
+SP=${13}
+DO=${14}
+FL=${15}
+SFT=${16}
+### PARALLEL / BOOL OPTION ###
+
+### OTHERS ###
+AC=${17}
+OPTIMIZER_OFFLOAD=${18}
+SAVE_INTERVAL=${19}
+DATASET_PATH=${20}
+VALID_DATASET_PATH=${21}
+PRETRAIN_CHECKPOINT_PATH=${22}
+
+# the following two values will not be used when SFT is true
+TRAIN_TOKENS=${23}
+WARMUP_TOKENS=${24}
+###############################
+
+OUTPUT_BASEPATH=${25}
+### OTHERS ###
+
+if [ $FL = true ]; then
+    export NVTE_FLASH_ATTN=1 NVTE_FUSED_ATTN=0
+elif [ $FL = false ]; then
+    export NVTE_FLASH_ATTN=0 NVTE_FUSED_ATTN=1
+fi
+
+if [ $MODEL_SIZE = 0.5B ]; then
+
+NUM_LAYERS=24
+HIDDEN_SIZE=896
+NUM_ATTN_HEADS=14
+INTERMEDIATE_SIZE=4864
+NUM_KEY_VALUE_HEADS=2
+MAX_POSITION_EMBEDDINGS=32768
+EXTRA_VOCAB_SIZE=293
+RMS_NORM_EPS=1e-6
+gqa_options=" \
+            --group-query-attention \
+            --num-query-groups ${NUM_KEY_VALUE_HEADS}"
+
+
+tie_option=""
+
+elif [ $MODEL_SIZE = 1.5B ]; then
+
+NUM_LAYERS=28
+HIDDEN_SIZE=1536
+NUM_ATTN_HEADS=12
+INTERMEDIATE_SIZE=8960
+NUM_KEY_VALUE_HEADS=2
+MAX_POSITION_EMBEDDINGS=32768
+EXTRA_VOCAB_SIZE=293
+RMS_NORM_EPS=1e-6
+gqa_options=" \
+            --group-query-attention \
+            --num-query-groups ${NUM_KEY_VALUE_HEADS}"
+
+tie_option=""
+
+elif [ $MODEL_SIZE = 3B ]; then
+
+NUM_LAYERS=36
+HIDDEN_SIZE=2048
+NUM_ATTN_HEADS=16
+INTERMEDIATE_SIZE=11008
+NUM_KEY_VALUE_HEADS=2
+MAX_POSITION_EMBEDDINGS=32768
+EXTRA_VOCAB_SIZE=293
+RMS_NORM_EPS=1e-6
+gqa_options=" \
+            --group-query-attention \
+            --num-query-groups ${NUM_KEY_VALUE_HEADS}"
+
+tie_option=""
+
+elif [ $MODEL_SIZE = 7B ]; then
+
+NUM_LAYERS=28
+HIDDEN_SIZE=3584
+NUM_ATTN_HEADS=28
+INTERMEDIATE_SIZE=18944
+NUM_KEY_VALUE_HEADS=4
+MAX_POSITION_EMBEDDINGS=131072
+EXTRA_VOCAB_SIZE=421
+RMS_NORM_EPS=1e-6
+gqa_options=" \
+            --group-query-attention \
+            --num-query-groups ${NUM_KEY_VALUE_HEADS}"
+
+tie_option=" \
+        --untie-embeddings-and-output-weights \
+        "
+
+elif [ $MODEL_SIZE = 14B ]; then
+
+NUM_LAYERS=48
+HIDDEN_SIZE=5120
+NUM_ATTN_HEADS=40
+INTERMEDIATE_SIZE=13824
+NUM_KEY_VALUE_HEADS=8
+MAX_POSITION_EMBEDDINGS=131072
+EXTRA_VOCAB_SIZE=421
+RMS_NORM_EPS=1e-5
+gqa_options=" \
+            --group-query-attention \
+            --num-query-groups ${NUM_KEY_VALUE_HEADS}"
+
+tie_option=" \
+        --untie-embeddings-and-output-weights \
+        "
+elif [ $MODEL_SIZE = 32B ]; then
+
+NUM_LAYERS=64
+HIDDEN_SIZE=5120
+NUM_ATTN_HEADS=40
+INTERMEDIATE_SIZE=27648
+NUM_KEY_VALUE_HEADS=8
+MAX_POSITION_EMBEDDINGS=131072
+EXTRA_VOCAB_SIZE=421
+RMS_NORM_EPS=1e-5
+gqa_options=" \
+            --group-query-attention \
+            --num-query-groups ${NUM_KEY_VALUE_HEADS}"
+
+tie_option=" \
+        --untie-embeddings-and-output-weights \
+        "
+elif [ $MODEL_SIZE = 72B ]; then
+
+NUM_LAYERS=80
+HIDDEN_SIZE=8192
+NUM_ATTN_HEADS=64
+INTERMEDIATE_SIZE=29568
+NUM_KEY_VALUE_HEADS=8
+MAX_POSITION_EMBEDDINGS=131072
+EXTRA_VOCAB_SIZE=421
+RMS_NORM_EPS=1e-5
+gqa_options=" \
+            --group-query-attention \
+            --num-query-groups ${NUM_KEY_VALUE_HEADS}"
+
+tie_option=" \
+        --untie-embeddings-and-output-weights \
+        "
+
+fi
+
+TP_COMM_OVERLAP=$(( ($TP > 1) ? 1 : 0 ))
+comm_overlap_option="\
+    --overlap-grad-reduce \
+    --overlap-param-gather"
+ 
+
+if [ $TP_COMM_OVERLAP -eq 1 ]; then
+    comm_overlap_option="\
+        --tp-comm-overlap \
+        --overlap-grad-reduce \
+        --overlap-param-gather"
+fi
+
+if [ $AC = full ]; then
+    _check=$(( ($NUM_LAYERS / $PP) % ${MP_AC_LAYERS} ))
+    if [ $_check != 0 ]; then
+        echo "the num layers per pp rank must be a multiple of the recompute layers."
+        exit -1
+    fi
+    activation_checkpoint_options=" \
+            --recompute-method uniform \
+            --recompute-num-layers ${MP_AC_LAYERS} \
+            --recompute-granularity full"
+elif [ $AC = sel ]; then
+    activation_checkpoint_options=" \
+        --recompute-activations"
+elif [ $AC = none ]; then
+    activation_checkpoint_options=" \
+    "
+elif [ $AC = offload ]; then
+    activation_checkpoint_options=" \
+            --cpu-offloading \
+            --cpu-offloading-num-layers ${MP_AC_LAYERS}"
+    if [ $TP_COMM_OVERLAP -eq 1 ]; then
+        echo "Disable --overlap-grad-reduce and --overlap-param-gather when cpu offloading is on..."
+        comm_overlap_option="\
+            --tp-comm-overlap"
+    else
+        echo "Disable --overlap-grad-reduce and --overlap-param-gather when cpu offloading is on..."
+        comm_overlap_option=""
+    fi
+fi
+
+if [ $PR = fp16 ]; then
+    pr_options=" \
+            --fp16 \
+            --apply-query-key-layer-scaling"
+    export NVTE_APPLY_QK_LAYER_SCALING=1
+elif [ $PR = bf16 ]; then
+    pr_options=" \
+        --bf16"
+elif [ $PR = fp8 ]; then
+    pr_options=" \
+        --bf16 \
+        --fp8-format hybrid \
+        --fp8-amax-compute-algo max \
+        --fp8-amax-history-len 1024"
+fi
+
+if [ $OPTIMIZER_OFFLOAD != false ] && [ $DO = false ]; then
+    echo "Offload optimizer is valid only if \$DO=true"
+    DO=true
+fi
+
+if [ $DO = true ]; then
+    do_options=" \
+            --use-distributed-optimizer"
+
+elif [ $DO = false ]; then
+    do_options=" \
+                    "
+fi
+
+te_options=" \
+        --transformer-impl transformer_engine"
+
+if [ $SP = true ] && [ $TP -gt 1 ]; then
+    sp_options=" \
+            --sequence-parallel"
+
+elif [ $SP = false ]; then
+    sp_options=" \
+                    "
+fi
+
+if [ $PRETRAIN_CHECKPOINT_PATH != none ]; then
+    load_options=" \
+            --load $PRETRAIN_CHECKPOINT_PATH"
+fi
+
+if [ $OPTIMIZER_OFFLOAD = 'static' ]; then
+    offload_option=" \
+        --optimizer hybridadam \
+        --optimizer-offload-policy static \
+        --optimizer-offload-fraction 1.0"
+elif [ $OPTIMIZER_OFFLOAD = 'auto' ]; then
+    offload_option=" \
+        --optimizer hybridadam \
+        --optimizer-offload-policy auto"
+else
+    offload_option=""
+fi
+
+if [ $SFT = true ]; then
+    TRAIN_ITERS=${23}
+    LR_WARMUP_ITERS=${24}
+    LR_DECAY_ITERS=$(( ${TRAIN_ITERS} - ${LR_WARMUP_ITERS}))
+    PREFIX="finetune-mcore-qwen2.5-${MODEL_SIZE}-lr-${LR}-minlr-${MIN_LR}-bs-${BATCH_SIZE}-gbs-${GLOBAL_BATCH_SIZE}-seqlen-${SEQ_LEN}"
+    sft_option=" \
+         --eod-mask-loss \
+         --calculate-per-token-loss \
+         --train-mode finetune"
+else
+    echo "TRAIN_TOKENS: "${TRAIN_TOKENS}
+    echo "GLOBAL_BATCH_SIZE: "${GLOBAL_BATCH_SIZE}
+    echo "SEQ_LEN: "${SEQ_LEN}
+    echo "WARMUP_TOKENS: "${WARMUP_TOKENS}
+    TRAIN_ITERS=$(( ${TRAIN_TOKENS} / ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
+    LR_WARMUP_ITERS=$(( ${WARMUP_TOKENS}  / ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
+    LR_DECAY_ITERS=$(( ${TRAIN_TOKENS} /  ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
+    PREFIX="pretrain-mcore-qwen2.5-${MODEL_SIZE}-lr-${LR}-minlr-${MIN_LR}-bs-${BATCH_SIZE}-gbs-${GLOBAL_BATCH_SIZE}-seqlen-${SEQ_LEN}"
+    sft_option=" \
+        --train-mode pretrain"
+    echo "TRAIN_ITERS: "${TRAIN_ITERS}
+    echo "LR_WARMUP_ITERS: "${LR_WARMUP_ITERS}
+    echo "LR_DECAY_ITERS: "${LR_DECAY_ITERS}
+fi
+
+if [ ${MP_DATASET_TYPE} = "raw" ]; then
+    dataset_option=" \
+        --train-data-path ${DATASET_PATH} \
+        --valid-data-path ${VALID_DATASET_PATH} \
+        --dataloader-type cyclic \
+        --dataset JSON-SFT"
+else 
+    dataset_option=" \
+        --data-path ${DATASET_PATH} \
+        --split 99,1,0 \
+        --dataset MMAP"
+fi
+
+if [ ${MP_SFT_PACKING} = true ]; then
+    packing_options=" \
+        --reset-position-ids \
+        --no-create-attention-mask-in-dataloader
+    "
+else
+    packing_options=""
+fi
+
+##### Prepare logdirs #######
+NAME="${PREFIX}-pr-${PR}-tp-${TP}-pp-${PP}-cp-${CP}-ac-${AC}-do-${DO}-sp-${SP}-ti-${TRAIN_ITERS}-wi-${LR_WARMUP_ITERS}"
+mkdir -p "${OUTPUT_BASEPATH}/tensorboard/"
+mkdir -p "${OUTPUT_BASEPATH}/checkpoint/"
+mkdir -p "${OUTPUT_BASEPATH}/log/"
+current_time=$(date "+%Y.%m.%d-%H.%M.%S")
+TENSORBOARD_DIR="${OUTPUT_BASEPATH}/tensorboard/${NAME}_${current_time}"
+mkdir -p ${TENSORBOARD_DIR}
+SAVED_PRETRAIN_CHECKPOINT_PATH="${OUTPUT_BASEPATH}/checkpoint/${NAME}"
+
+mkdir -p ${SAVED_PRETRAIN_CHECKPOINT_PATH}
+find -L ${PRETRAIN_CHECKPOINT_PATH} -maxdepth 1 -type f -name "*.json" -print0 | xargs -0 cp -t ${SAVED_PRETRAIN_CHECKPOINT_PATH}
+find -L ${PRETRAIN_CHECKPOINT_PATH} -maxdepth 1 -type f -name "merges.txt" -print0 | xargs -0 cp -t ${SAVED_PRETRAIN_CHECKPOINT_PATH}
+
 megatron_options="  \
         --save ${SAVED_PRETRAIN_CHECKPOINT_PATH} \
         --lr ${LR} \
@@ -75,7 +453,6 @@ megatron_options="  \
         --tensorboard-dir ${TENSORBOARD_DIR} \
         --log-timers-to-tensorboard \
         --log-batch-size-to-tensorboard \
-        --log-validation-ppl-to-tensorboard \
         --tensor-model-parallel-size ${TP} \
         --pipeline-model-parallel-size ${PP} \
         --context-parallel-size ${CP} \
@@ -96,12 +473,47 @@ megatron_options="  \
         --rotary-seq-len-interpolation-factor 1 \
         --no-save-optim \
         "
+#comment out --wandb-project if wandb is not being used
 
-# Run with srun directly
-run_cmd="srun python /fsx/dataset/megatron-test/examples/qwen2/pretrain_qwen.py \
- ${megatron_options} ${dataset_option} ${pr_options} ${load_options} ${te_options} ${activation_checkpoint_options} \
- ${do_options} ${sp_options} ${gqa_options} ${offload_option} ${comm_overlap_option} ${sft_option}  ${tie_option} ${vp_options} ${packing_options}"
+#export WANDB_API_KEY=you-wandb-key
+
+current_time=$(date "+%Y%m%d-%H%M%S")  # Get current timestamp
+WANDB_EXP_NAME="training-tp${TP}-pp${PP}-gbs${GLOBAL_BATCH_SIZE}-mbs${BATCH_SIZE}-${current_time}"
+
+if [ -n "${WANDB_API_KEY}" ]; then
+    megatron_options+=" --wandb-project ${WANDB_PROJECT:-"lion"}"
+    megatron_options+=" --wandb-exp-name ${WANDB_NAME:-$WANDB_EXP_NAME}"
+    megatron_options+=" \
+        --log-learning-rate-to-tensorboard \
+        --log-loss-scale-to-tensorboard \
+        --log-validation-ppl-to-tensorboard \
+        --log-memory-to-tensorboard \
+        --log-world-size-to-tensorboard \
+        --log-params-norm \
+        --log-num-zeros-in-grad \
+    "
+fi
+
+#source /opt/parallelcluster/pyenv/versions/3.9.20/envs/awsbatch_virtualenv/bin/activate
+srun bash -c "
+    sudo mkdir -p /home/ec2-user/model
+    sudo chmod -R 777 /home/ec2-user/model
+    sudo mkdir -p /tmp
+    sudo chown -R ec2-user:ec2-user /tmp
+    sudo chmod -R 777 /tmp
+    sudo chown -R ec2-user:ec2-user /data
+    sudo chmod -R 777 /data
+"
+run_cmd="srun --export=ALL python /data/fsx/megatron-test/pretrain_qwen.py \
+    ${megatron_options} ${dataset_option} ${pr_options} ${load_options} ${te_options} ${activation_checkpoint_options} ${fl_option} \
+    ${do_options} ${sp_options} ${gqa_options} ${offload_option} ${comm_overlap_option} ${sft_option} ${tie_option} ${vp_options} ${packing_options}"
 
 echo ${run_cmd}
 eval ${run_cmd}
+# Check if the command executed successfully
+if [ $? -eq 0 ]; then
+  echo "Command executed successfully"
+else
+  echo "Command failed with error"
+fi
 set +x

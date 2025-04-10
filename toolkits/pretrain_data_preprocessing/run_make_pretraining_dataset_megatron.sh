@@ -1,4 +1,12 @@
 #! /bin/bash
+#SBATCH --ntasks=16                 # Total number of tasks (8 GPUs × 2 nodes)
+#SBATCH --nodes=2                   # Use 2 nodes
+#SBATCH --ntasks-per-node=8         # 8 tasks per node (one per GPU)
+#SBATCH --partition=train           # Partition to submit the job to
+#SBATCH --cpus-per-task=8           # Number of CPU cores per task
+#SBATCH --gres=gpu:8                # 8 GPUs per node
+#SBATCH --output=data_%j.log
+
 START_TIME=$SECONDS
 
 CURRENT_DIR="$( cd "$( dirname "$0" )" && pwd )"

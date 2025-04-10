@@ -5,7 +5,6 @@ from functools import reduce
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
-import torch.distributed as dist
 
 from megatron import core
 from megatron.core import ModelParallelConfig
@@ -17,25 +16,6 @@ from megatron.core.parallel_state import (
     get_pipeline_model_parallel_world_size,
 )
 
-from megatron.training.utils import (
-    append_to_progress_log,
-    calc_params_l2_norm,
-    check_adlr_autoresume_termination,
-    is_last_rank,
-    print_rank_0,
-    print_rank_last,
-    report_memory,
-    unwrap_model,
-)
-from datetime import datetime
-
-def print_datetime(string):
-    """Note that this call will sync across all ranks."""
-    torch.distributed.barrier(device_ids=[int(os.environ["LOCAL_RANK"])])
-    time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    print_rank_0('[' + string + '] datetime: {} '.format(time_str))
-
-    
 # Types
 Shape = Union[List[int], torch.Size]
 
@@ -318,22 +298,17 @@ def _communicate(
 
     # Create placeholder tensors for receive in forward and backward directions
     # if needed.
-    print_datetime("inside _communicate function")
-    torch.distributed.barrier(device_ids=[int(os.environ["LOCAL_RANK"])])
-
     tensor_recv_prev = None
     tensor_recv_next = None
 
-    print_datetime("checking config.variable_seq_lengths")
     if not config.variable_seq_lengths:
         recv_prev_shape = tensor_shape
         recv_next_shape = tensor_shape
     else:
-        print_datetime("calling _communicate_shapes")
         recv_prev_shape, recv_next_shape = _communicate_shapes(
             tensor_send_next, tensor_send_prev, recv_prev, recv_next, config
         )
-    print_datetime("checking recv_prev")
+
     if recv_prev:
         if config.pipeline_dtype is None:
             raise RuntimeError("pipeline_dtype must be provided if recv_prev is True")
@@ -364,22 +339,19 @@ def _communicate(
         )
 
     # Send tensors in both the forward and backward directions as appropriate.
-    print_datetime("Sending tensors in both the forward and backward directions")
     if config.use_ring_exchange_p2p:
-        print_datetime("using ring exchange p2p")
+
         def _ring_exchange_wrapper(**kwargs):
-            torch.distributed._functional_collectives.ring_exchange(**kwargs)
+            torch.distributed.ring_exchange(**kwargs)
             return []
 
         p2p_func = _ring_exchange_wrapper
     elif config.batch_p2p_comm:
-        print_datetime("using batch_p2p_comm")
         assert wait_on_reqs
         p2p_func = _batched_p2p_ops
     else:
-        print_datetime("using p2p ops")
         p2p_func = _p2p_ops
-    print_datetime("calling p2p func")
+
     reqs = p2p_func(
         tensor_send_prev=tensor_send_prev,
         tensor_recv_prev=tensor_recv_prev,
@@ -389,7 +361,6 @@ def _communicate(
     )
 
     if wait_on_reqs and len(reqs) > 0:
-        print_datetime("waiting on requests...")
         for req in reqs:
             req.wait()
         reqs = None
@@ -407,13 +378,12 @@ def recv_forward(tensor_shape: Shape, config: ModelParallelConfig) -> torch.Tens
 
     See _communicate for argument details.
     """
-    print_datetime("Inside p2p_comm recv_forward")
+
     if core.parallel_state.is_pipeline_first_stage():
         input_tensor = None
     else:
         if config.timers is not None:
             config.timers('forward-recv', log_level=2).start()
-        print_datetime("_communicate called")
         input_tensor, _, _ = _communicate(
             tensor_send_next=None,
             tensor_send_prev=None,
@@ -423,7 +393,6 @@ def recv_forward(tensor_shape: Shape, config: ModelParallelConfig) -> torch.Tens
             config=config,
         )
         if config.timers is not None:
-            print_datetime("config.timers is not none")
             config.timers('forward-recv').stop()
     return input_tensor
 

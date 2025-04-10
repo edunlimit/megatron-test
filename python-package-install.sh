@@ -7,7 +7,7 @@
 #SBATCH --partition=train         # Partition to submit the job to
 
 srun -N 2 -n 2 bash -c '
-	source /opt/parallelcluster/pyenv/versions/3.9.20/envs/awsbatch_virtualenv/bin/activate
+	#source /opt/parallelcluster/pyenv/versions/3.9.20/envs/awsbatch_virtualenv/bin/activate
 
 	sudo chown -R ec2-user:ec2-user /opt/parallelcluster/pyenv/versions/3.9.20/envs/awsbatch_virtualenv/
 
@@ -31,23 +31,56 @@ srun -N 2 -n 2 bash -c '
 	wandb \
 	datasets \
 	wheel \
-	packaging \
 	ninja \
-	setuptools
+	pybind11 \
+	megatron-core \
+	tensorboard \
+    importlib-metadata=6.9
 
-	pip3 install --verbose --no-cache-dir transformer_engine[pytorch]==1.13.0
+	pip install --upgrade --force-reinstall pip setuptools packaging
+	pip install --upgrade importlib-metadata
 '
 
 srun -N 2 -n 2 bash -c '
-	sudo chown -R ec2-user:ec2-user /home/ec2-user/apex
+	#source /opt/parallelcluster/pyenv/versions/3.9.20/envs/awsbatch_virtualenv/bin/activate
+	sudo yum install python3-devel -y
+'
 
-	sudo mkdir -p apex \
-	&& sudo chmod -R 777 apex \
-	&& cd apex \
-	&& git clone https://github.com/NVIDIA/apex.git . \
-	&& pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --global-option="--cpp_ext" --global-option="--cuda_ext" ./ \
-	&& cd .. \
-	&& rm -rf /apex
-	'
+srun --ntasks=2 --nodes=2 bash -c "
+    #source /opt/parallelcluster/pyenv/versions/3.9.20/envs/awsbatch_virtualenv/bin/activate
+    export MAX_JOBS=4
+    env | grep MAX_JOBS
+    echo "MAX_JOBS="$MAX_JOBS
+    pip -v install https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.0.6/flash_attn-2.6.3+cu126torch2.6-cp312-cp312-linux_x86_64.whl
+    export MAX_JOBS=48
+    env | grep MAX_JOBS
+    echo "Changing back to MAX_JOBS="$MAX_JOBS
+"
+
+srun -N 2 -n 2 bash -c '
+	#source /opt/parallelcluster/pyenv/versions/3.9.20/envs/awsbatch_virtualenv/bin/activate
+	#pip3 install --verbose --no-cache-dir transformer_engine[pytorch]==1.13.0
+	pip3 install --verbose --no-cache-dir transformer_engine[pytorch]
+'
+
+
+srun --ntasks=2 --nodes=2\
+    bash -c "#source /opt/parallelcluster/pyenv/versions/3.9.20/envs/awsbatch_virtualenv/bin/activate
+    #sudo chown -R ec2-user:ec2-user /home/ec2-user/apex
+    pip install cython
+
+    sudo rm -rf /apex
+    sudo mkdir -p /apex \
+    && sudo chmod -R 777 /apex \
+    && cd /apex \
+    && git clone https://github.com/NVIDIA/apex.git . \
+    && pip uninstall -y apex || true \
+    && pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" . \
+    && cd .. \
+
+
+    pip show apex
+    sudo rm -rf /apex
+"
 
 echo "Python modules and dependencies have been successfully installed."
