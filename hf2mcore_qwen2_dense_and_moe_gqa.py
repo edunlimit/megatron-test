@@ -1,72 +1,6 @@
 import os
 import torch
 import gc
-## SageMaker Revised
-# Set environment variables first
-os.environ['LOCAL_RANK'] = os.environ['OMPI_COMM_WORLD_LOCAL_RANK']
-local_rank = int(os.environ['LOCAL_RANK'])
-os.environ['RANK'] = os.environ['OMPI_COMM_WORLD_RANK']
-world_rank = int(os.environ['RANK'])
-os.environ['WORLD_SIZE'] = os.environ['OMPI_COMM_WORLD_SIZE']
-world_size = int(os.environ['WORLD_SIZE'])
-
-# For p4d.24xlarge, there are 8 GPUs per node
-gpus_per_node = 8
-os.environ['NODE_RANK'] = str(world_rank // gpus_per_node)
-node_rank = int(os.environ['NODE_RANK'])
-
-# Set CUDA environment variables before any CUDA operations
-os.environ['CUDA_VISIBLE_DEVICES'] = str(local_rank)
-os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
-
-#EFA Env Setup
-os.environ['FI_EFA_FORK_SAFE'] = '1'
-
-
-# Print debug information
-print(f"Debug Info for process:")
-print(f"Local Rank: {local_rank}")
-print(f"World Rank: {world_rank}")
-print(f"World Size: {world_size}")
-print(f"Node Rank: {node_rank}")
-print(f"GPUs per Node: {gpus_per_node}")
-print(f"CUDA_VISIBLE_DEVICES: {os.environ.get('CUDA_VISIBLE_DEVICES', 'Not Set')}")
-
-# Initialize CUDA first
-torch.cuda.init()
-
-# Now check available GPUs
-n_gpus = torch.cuda.device_count()
-print(f"Number of available GPUs: {n_gpus}")
-
-# Set device (using device 0 since CUDA_VISIBLE_DEVICES handles the mapping)
-torch.cuda.set_device(0)  # Use 0 because CUDA_VISIBLE_DEVICES already maps the correct GPU
-current_device = torch.cuda.current_device()
-print(f"Current CUDA device: {current_device}")
-
-# Additional debug information
-print(f"Device capability: {torch.cuda.get_device_capability(current_device)}")
-print(f"Device name: {torch.cuda.get_device_name(current_device)}")
-
-# Initialize the process group
-torch.distributed.init_process_group(
-    backend="nccl",
-    init_method="env://"
-)
-
-# Verify process group initialization
-print(f"Process group initialized: {torch.distributed.is_initialized()}")
-
-
-from pathlib import Path
-import subprocess
-
-set_path = '/opt/ml/code/config'
-file = Path(set_path)
-if file.exists() and os.environ['LOCAL_RANK'] == '0':
-    subprocess.run(['cp', '-r', set_path, '/root/.aws/'])
-########################################
-## SageMaker Revised
 
 import re
 import json
@@ -85,7 +19,6 @@ from megatron.training.checkpointing import get_checkpoint_name, get_checkpoint_
 from functools import partial
 from megatron.training.utils import get_ltor_masks_and_position_ids
 import sys
-import boto3
 import tqdm
 
 path_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
@@ -108,39 +41,6 @@ torch.backends.cuda.matmul.allow_tf32 = False
 torch.backends.cudnn.allow_tf32 = False
 torch.backends.cuda.enable_mem_efficient_sdp(False)
 torch.backends.cuda.enable_flash_sdp(False)
-
-def install_apex():
-    print("Installing Apex...")
-    try:
-        # Clone APEX repository
-        subprocess.check_call(['git', 'clone', 'https://github.com/NVIDIA/apex.git'])
-        
-        # Change to apex directory
-        os.chdir('apex')
-        
-        # Install APEX with specified options
-        pip_install_cmd = [
-            sys.executable, '-m', 'pip', 'install', '-v', 
-            '--disable-pip-version-check', 
-            '--no-cache-dir', 
-            '--no-build-isolation',
-            '--config-settings', '--build-option=--cpp_ext',
-            '--config-settings', '--build-option=--cuda_ext',
-            './'
-        ]
-        
-        # Run the installation
-        subprocess.check_call(pip_install_cmd)
-        
-        print("APEX installed successfully!")
-    
-    except subprocess.CalledProcessError as e:
-        print(f"Error during APEX installation: {e}")
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-    finally:
-        # Change back to original directory
-        os.chdir('..')
 
 def add_model_args(parser):
 
@@ -1021,39 +921,6 @@ def add_extra_args(parser):
     parser = add_model_args(parser)
     return parser
 
-def upload_folder_to_s3(local_folder, bucket_name, s3_folder=""):
-    """
-    Uploads a folder and all its contents to an S3 bucket with a progress bar.
-    
-    :param local_folder: Path to the local folder to upload.
-    :param bucket_name: The target S3 bucket name.
-    :param s3_folder: The target folder in S3 (optional).
-    """
-    s3_client = boto3.client('s3')
-    rank = torch.distributed.get_rank()
-
-    # Get list of files to upload
-    file_list = []
-    for root, dirs, files in os.walk(local_folder):
-        for file in files:
-            local_path = os.path.join(root, file)
-            relative_path = os.path.relpath(local_path, local_folder)
-            s3_path = os.path.join(s3_folder, relative_path)
-            file_list.append((local_path, s3_path))
-
-    # Only show progress bar on rank 0
-    if rank == 0:
-        pbar = tqdm.tqdm(total=len(file_list), desc="Uploading", unit="file")
-
-    for local_path, s3_path in file_list:
-        s3_client.upload_file(local_path, bucket_name, s3_path)
-        if rank == 0:
-            pbar.update(1)
-
-    if rank == 0:
-        pbar.close()
-        print('Files Uploaded to S3')
-
 def main():
     #install_apex()
     initialize_megatron(extra_args_provider=add_extra_args)
@@ -1073,8 +940,6 @@ def main():
         if not args.num_experts:
             check_hf_mg_forward(hf_model, mg_model, args)
         save_mgmodel(mg_model, args)
-    
-    upload_folder_to_s3(args.save, 'code-parrot-sample-data', "megatron-qwen2.5-7B")
 
 if __name__ == "__main__":
     main()
