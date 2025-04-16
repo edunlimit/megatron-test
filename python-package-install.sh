@@ -64,23 +64,4 @@ srun -N 2 -n 2 bash -c '
 '
 
 
-srun --ntasks=2 --nodes=2\
-    bash -c "#source /opt/parallelcluster/pyenv/versions/3.9.20/envs/awsbatch_virtualenv/bin/activate
-    #sudo chown -R ec2-user:ec2-user /home/ec2-user/apex
-    pip install cython
-
-    sudo rm -rf /apex
-    sudo mkdir -p /apex \
-    && sudo chmod -R 777 /apex \
-    && cd /apex \
-    && git clone https://github.com/NVIDIA/apex.git . \
-    && pip uninstall -y apex || true \
-    && pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" . \
-    && cd .. \
-
-
-    pip show apex
-    sudo rm -rf /apex
-"
-
 echo "Python modules and dependencies have been successfully installed."
