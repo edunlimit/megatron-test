@@ -20,6 +20,7 @@ output_data_dir=$4
 load_dir=$5
 
 INPUT="${input_data_dir}"
+source /opt/pytorch/bin/activate
 
 if [ $tokenizer = "Qwen2Tokenizer" ]; then
   uv run python preprocess_data_megatron.py \
