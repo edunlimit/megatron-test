@@ -1,0 +1,45 @@
+Region: us-east-1
+Image:
+  Os: alinux2023
+  CustomAmi: ami-01ea6af535166fef2
+HeadNode:
+  InstanceType: m5.large
+  Networking:
+    SubnetId: subnet-0d741afff60c44170
+    SecurityGroups: [sg-0ee9766ca0e8c8f04]
+  Ssh:
+    KeyName: ec2_p4d_key
+SharedStorage:
+  - Name: fsx
+    MountDir: /data
+    StorageType: FsxLustre
+    FsxLustreSettings:
+      FileSystemId: fs-00edbd21a06dc6cc5
+Scheduling:
+  Scheduler: slurm
+  SlurmSettings:
+    QueueUpdateStrategy: TERMINATE
+  SlurmQueues:
+  - Name: train
+    ComputeResources:
+    - Name: p4d24xlarge
+      Instances:
+      - InstanceType: p4d.24xlarge
+      MinCount: 2
+      MaxCount: 2
+      Efa:
+        Enabled: true
+    Networking:
+      PlacementGroup:
+        Enabled: true
+      SubnetIds:
+      - subnet-0d19f258796cee783
+      SecurityGroups: 
+      - sg-0ee9766ca0e8c8f04
+    ComputeSettings:
+        LocalStorage:
+          RootVolume:
+            Size: 500
+DevSettings:
+  Timeouts:
+    HeadNodeBootstrapTimeout: 3000

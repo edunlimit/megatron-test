@@ -1,0 +1,9 @@
+Region: us-east-1
+Image:
+  Name: megatron-ami
+Build:
+  InstanceType: p4d.24xlarge
+  ParentImage: ami-0db4215299a464a09
+  SecurityGroupIds:
+    - sg-006609bebf68f39d8
+  SubnetId: subnet-054c7c7eea36f49c8
