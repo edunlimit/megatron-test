@@ -22,7 +22,7 @@ load_dir=$5
 INPUT="${input_data_dir}"
 
 if [ $tokenizer = "Qwen2Tokenizer" ]; then
-  python preprocess_data_megatron.py \
+  uv run python preprocess_data_megatron.py \
   --input ${INPUT} \
   --output-prefix ${output_data_dir}/mmap_qwen2_datasets \
   --patch-tokenizer-type Qwen2Tokenizer \
