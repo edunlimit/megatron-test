@@ -847,18 +847,6 @@ def training_log(
 
     total_iterations = total_loss_dict[advanced_iters_key] + total_loss_dict[skipped_iters_key]
 
-    """Debugging"""
-    print(f"DEBUG [Rank {args.rank}/{args.world_size}]: Wandb writer is {'initialized' if wandb_writer else 'not initialized'}")
-    print(f"DEBUG: Wandb writer is {'initialized' if wandb_writer else 'not initialized'}")
-    print(f"DEBUG: log_learning_rate_to_tensorboard={args.log_learning_rate_to_tensorboard}")
-    print(f"DEBUG: log_loss_scale_to_tensorboard={args.log_loss_scale_to_tensorboard}")
-    print(f"DEBUG: log_memory_to_tensorboard={args.log_memory_to_tensorboard}")
-    print(f"DEBUG: log_world_size_to_tensorboard={args.log_world_size_to_tensorboard}")
-    print(f"DEBUG: grad_norm is {'set' if grad_norm is not None else 'None'}")
-    print(f"DEBUG: num_zeros_in_grad is {'set' if num_zeros_in_grad is not None else 'None'}")
-    print(f"DEBUG: params_norm is {'set' if params_norm is not None else 'None'}")
-    print(f"DEBUG: loss_dict keys: {list(loss_dict.keys())}")
-
     # Tensorboard values.
     # Timer requires all the ranks to call.
     if args.log_timers_to_tensorboard and (iteration % args.tensorboard_log_interval == 0):

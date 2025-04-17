@@ -12,7 +12,7 @@ set -e
 ENV=$1
 CURRENT_DIR="$( cd "$( dirname "$0" )" && pwd )"
 MEGATRON_PATH=$( dirname $( dirname ${CURRENT_DIR}))
-export PYTHONPATH=/fsx/fsx/megtron-test/PAI-Megatron-LM-240718:/opt/pytorch/lib/python3.12/site-packages/
+export PYTHONPATH=/fsx/fsx/megtron-test/PAI-Megatron-LM-240718:/fsx/fsx/megatron-test/.venv/lib/python3.12/site-packages
 #export PYTHONPATH=/fsx/fsx/megtron-test/PAI-Megatron-LM-240718:/opt/parallelcluster/pyenv/versions/3.9.20/envs/awsbatch_virtualenv/lib/python3.9/site-packages
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 
@@ -494,17 +494,8 @@ if [ -n "${WANDB_API_KEY}" ]; then
     "
 fi
 
-#source /opt/parallelcluster/pyenv/versions/3.9.20/envs/awsbatch_virtualenv/bin/activate
-srun bash -c "
-    sudo mkdir -p /home/ec2-user/model
-    sudo chmod -R 777 /home/ec2-user/model
-    sudo mkdir -p /tmp
-    sudo chown -R ec2-user:ec2-user /tmp
-    sudo chmod -R 777 /tmp
-    sudo chown -R ec2-user:ec2-user /data
-    sudo chmod -R 777 /data
-"
-run_cmd="srun --export=ALL python /data/fsx/megatron-test/pretrain_qwen.py \
+
+run_cmd="srun --export=ALL uv run python /fsx/fsx/megatron-test/pretrain_qwen.py \
     ${megatron_options} ${dataset_option} ${pr_options} ${load_options} ${te_options} ${activation_checkpoint_options} ${fl_option} \
     ${do_options} ${sp_options} ${gqa_options} ${offload_option} ${comm_overlap_option} ${sft_option} ${tie_option} ${vp_options} ${packing_options}"
 
