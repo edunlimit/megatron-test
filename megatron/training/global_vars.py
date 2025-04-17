@@ -35,7 +35,6 @@ def get_tensorboard_writer():
     """Return tensorboard writer. It can be None so no need
     to check if it is initialized."""
     if _GLOBAL_TENSORBOARD_WRITER is None:
-        print('setting tensorboard writer...')
         _set_tensorboard_writer(get_args())
     return _GLOBAL_TENSORBOARD_WRITER
 
@@ -44,7 +43,6 @@ def get_wandb_writer():
     """Return tensorboard writer. It can be None so no need
     to check if it is initialized."""
     if _GLOBAL_WANDB_WRITER is None:
-        print('setting wandb writer...')
         _set_wandb_writer(get_args())
     print(f"DEBUG: get_wandb_writer returning: {'initialized' if _GLOBAL_WANDB_WRITER else 'None'}")
     return _GLOBAL_WANDB_WRITER
