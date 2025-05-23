@@ -11,7 +11,7 @@ HeadNode:
     KeyName: ec2_p4d_key
 SharedStorage:
   - Name: fsx
-    MountDir: /data
+    MountDir: /fsx
     StorageType: FsxLustre
     FsxLustreSettings:
       FileSystemId: fs-00edbd21a06dc6cc5
