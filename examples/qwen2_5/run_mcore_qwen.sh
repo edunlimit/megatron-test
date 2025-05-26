@@ -495,7 +495,7 @@ if [ -n "${WANDB_API_KEY}" ]; then
 fi
 
 
-run_cmd="srun --export=ALL uv run python /fsx/fsx/megatron-test/pretrain_qwen.py \
+run_cmd="srun --export=ALL uv run python /fsx/data/megatron-test/pretrain_qwen.py \
     ${megatron_options} ${dataset_option} ${pr_options} ${load_options} ${te_options} ${activation_checkpoint_options} ${fl_option} \
     ${do_options} ${sp_options} ${gqa_options} ${offload_option} ${comm_overlap_option} ${sft_option} ${tie_option} ${vp_options} ${packing_options}"
 
